@@ -4,6 +4,7 @@
     Copyright (C) 2020 Paweł T. Jochym
     Copyright (C) 2020 Fabrizio Pollastri
     Copyright (C) 2020-2022 Jasem Mutlaq
+    Copyright (C) 2026 Sébastien Valat
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -84,6 +85,12 @@ CelestronAUX::CelestronAUX()
     m_GuideRATimer.setSingleShot(true);
     m_GuideRATimer.callOnTimeout([this]()
     {
+        if (m_GuideWithPulse == false) {
+            this->m_isInPulse = false;
+            fprintf(stderr,"====> RESTORE AZ/RA => %d\n", m_LastGuideTrackRate[AXIS_AZ]);
+            //this->trackByRate(AXIS_AZ,  m_LastGuideTrackRate[AXIS_RA]);
+            this->trackByMode(AXIS_AZ, TRACK_SIDEREAL);
+        }
         GuideWENP[0].setValue(0);
         GuideWENP[1].setValue(0);
         GuideWENP.setState(IPS_IDLE);
@@ -93,6 +100,12 @@ CelestronAUX::CelestronAUX()
     m_GuideDETimer.setSingleShot(true);
     m_GuideDETimer.callOnTimeout([this]()
     {
+        if (m_GuideWithPulse == false) {
+            this->m_isInPulse = false;
+            fprintf(stderr, "====> RESTORE ALT/DE => %d\n", m_LastGuideTrackRate[AXIS_DE]);
+            this->trackByRate(AXIS_ALT,  0);
+            //this->trackByMode(AXIS_AZ, TRACK_SIDEREAL);
+        }
         GuideNSNP[0].setValue(0);
         GuideNSNP[1].setValue(0);
         GuideNSNP.setState(IPS_IDLE);
@@ -374,6 +387,11 @@ bool CelestronAUX::initProperties()
 
     setDriverInterface(getDriverInterface() | GUIDER_INTERFACE);
 
+    // GPS Emulation
+	GuidePulseMode[PULSE_MODE_PULSE].fill("PULSE_MODE_PULSE", "PULSE", ISS_ON);
+    GuidePulseMode[PULSE_MODE_GUIDE_RATE].fill("PULSE_MODE_GUIDE_RATE", "GUIDE RATE", ISS_OFF);
+    GuidePulseMode.fill(getDeviceName(), "PULSE_MODE", "Pulse mode", GUIDE_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
+
     /////////////////////////////////////////////////////////////////////////////////////
     /// Focus Tab
     /////////////////////////////////////////////////////////////////////////////////////
@@ -558,6 +576,7 @@ bool CelestronAUX::updateProperties()
         // Guide
         GI::updateProperties();
         defineProperty(GuideRateNP);
+        defineProperty(GuidePulseMode);
 
         // Cord wrap Enabled?
         if (m_MountType == ALT_AZ)
@@ -733,6 +752,7 @@ bool CelestronAUX::updateProperties()
 
         GI::updateProperties();
         deleteProperty(GuideRateNP);
+        deleteProperty(GuidePulseMode);
 
         if (m_MountType == ALT_AZ)
         {
@@ -783,6 +803,7 @@ bool CelestronAUX::saveConfigItems(FILE *fp)
     CordWrapBaseSP.save(fp);
     GPSEmuSP.save(fp);
     ApproachDirectionSP.save(fp);
+	GuidePulseMode.save(fp);
 
     Axis1LimitToggleSP.save(fp);
     Axis2LimitToggleSP.save(fp);
@@ -1091,6 +1112,16 @@ bool CelestronAUX::ISNewSwitch(const char *dev, const char *name, ISState *state
             return true;
         }
 
+        // Guide with pulse
+        if (GuidePulseMode.isNameMatch(name))
+        {
+            GuidePulseMode.update(states, names, n);
+            GuidePulseMode.setState(IPS_OK);
+            GuidePulseMode.apply();
+            m_GuideWithPulse = GuidePulseMode[PULSE_MODE_PULSE].s == ISS_ON;
+            return true;
+        }
+
         // Homing/Leveling
         if (HomeSP.isNameMatch(name))
         {
@@ -1351,47 +1382,76 @@ bool CelestronAUX::MoveWE(INDI_DIR_WE dir, TelescopeMotionCommand command)
 /////////////////////////////////////////////////////////////////////////////////////
 IPState CelestronAUX::GuideNorth(uint32_t ms)
 {
-    int8_t rate = static_cast<int8_t>(GuideRateNP[AXIS_ALT].getValue() * 100);
-    guidePulse(AXIS_DE, ms, rate);
+    int8_t rate_int = static_cast<int8_t>(GuideRateNP[AXIS_ALT].getValue() * 100);
+    double rate_double = static_cast<double>(GuideRateNP[AXIS_DE].getValue());
+    double steps = (((double)TRACKRATE_SIDEREAL * rate_double)) * STEPS_PER_ARCSEC * (double)GAIN_STEPS;
+    guidePulse(AXIS_DE, ms, rate_int, steps);
     return IPS_BUSY;
 }
 
 IPState CelestronAUX::GuideSouth(uint32_t ms)
 {
-    int8_t rate = static_cast<int8_t>(GuideRateNP[AXIS_ALT].getValue() * 100);
-    guidePulse(AXIS_DE, ms, -rate);
+    int8_t rate_int = static_cast<int8_t>(GuideRateNP[AXIS_ALT].getValue() * 100);
+    double rate_double = static_cast<double>(GuideRateNP[AXIS_DE].getValue());
+    double steps = (- ((double)TRACKRATE_SIDEREAL * rate_double)) * STEPS_PER_ARCSEC * (double)GAIN_STEPS;
+    guidePulse(AXIS_DE, ms, -rate_int, steps);
     return IPS_BUSY;
 }
 
 IPState CelestronAUX::GuideEast(uint32_t ms)
 {
-    int8_t rate = static_cast<int8_t>(GuideRateNP[AXIS_AZ].getValue() * 100);
-    guidePulse(AXIS_RA, ms, -rate);
+    int8_t rate_int = static_cast<int8_t>(GuideRateNP[AXIS_AZ].getValue() * 100);
+    double rate_double = static_cast<double>(GuideRateNP[AXIS_RA].getValue());
+    double steps = TRACKRATE_SIDEREAL * ((1.0 + rate_double) * STEPS_PER_ARCSEC * (double)GAIN_STEPS);
+    guidePulse(AXIS_RA, ms, -rate_int, steps);
     return IPS_BUSY;
 }
 
 IPState CelestronAUX::GuideWest(uint32_t ms)
 {
     int8_t rate = static_cast<int8_t>(GuideRateNP[AXIS_AZ].getValue() * 100);
-    guidePulse(AXIS_RA, ms, rate);
+    double rate_double = static_cast<double>(GuideRateNP[AXIS_RA].getValue());
+    double steps = TRACKRATE_SIDEREAL * ((1.0 - rate_double) * STEPS_PER_ARCSEC * (double)GAIN_STEPS);
+    guidePulse(AXIS_RA, ms, rate, steps);
     return IPS_BUSY;
 }
 
-bool CelestronAUX::guidePulse(INDI_EQ_AXIS axis, uint32_t ms, int8_t rate)
+bool CelestronAUX::guidePulse(INDI_EQ_AXIS axis, uint32_t ms, int8_t rate, double trackSteps)
 {
     // For Equatorial mounts, use regular guiding.
     if (m_MountType != ALT_AZ)
     {
-        uint8_t ticks = std::min(255u, ms / 10);
-        AUXBuffer data(2);
-        data[0] = rate;
-        data[1] = ticks;
-        AUXCommand cmd(MC_AUX_GUIDE, APP, axis == AXIS_DE ? ALT : AZM, data);
-        if (axis == AXIS_DE)
-            m_GuideDETimer.start(ticks * 10);
-        else
-            m_GuideRATimer.start(ticks * 10);
-        return sendAUXCommand(cmd);
+        if (m_GuideWithPulse) {
+            const uint8_t ticks = std::min(255u, ms / 10);
+            AUXBuffer data(2);
+            data[0] = rate;
+            data[1] = ticks;
+            AUXCommand cmd(MC_AUX_GUIDE, APP, axis == AXIS_DE ? ALT : AZM, data);
+            if (axis == AXIS_DE)
+                m_GuideDETimer.start(ticks * 10);
+            else
+                m_GuideRATimer.start(ticks * 10);
+            return sendAUXCommand(cmd);
+        } else {
+            //save last value
+            fprintf(stderr, "====> Change %d => %d => %f\n", axis, m_LastTrackRate[axis], trackSteps);
+            m_LastGuideTrackRate[axis] = m_LastTrackRate[axis];
+            this->m_isInPulse = true;
+
+            //update tracking rate
+            const uint8_t ticks = std::min(255u, ms / 10);
+            const bool status = this->trackByRate(axis == AXIS_DE ? AXIS_ALT : AXIS_AZ,  trackSteps);
+
+            //start timer to reset after delay
+			fprintf(stderr, "=====> WAIT %u\n", ms);
+            if (axis == AXIS_DE)
+                m_GuideDETimer.start(ms);
+            else
+                m_GuideRATimer.start(ms);
+
+            //finished
+            return status;
+        }
     }
     // For Alt-Az mounts in tracking state, add to guide delta
     else if (TrackState == SCOPE_TRACKING)
@@ -2924,15 +2984,17 @@ bool CelestronAUX::Abort()
 /////////////////////////////////////////////////////////////////////////////////////
 bool CelestronAUX::trackByRate(INDI_HO_AXIS axis, int32_t rate)
 {
-    if (std::abs(rate) > 0 && rate == m_LastTrackRate[axis])
-        return true;
+    /*if (std::abs(rate) > 0 && rate == m_LastTrackRate[axis])
+        return true;*/
 
     m_LastTrackRate[axis] = rate;
     AUXCommand command(rate < 0 ? MC_SET_NEG_GUIDERATE : MC_SET_POS_GUIDERATE, APP, axis == AXIS_AZ ? AZM : ALT);
     // 24bit rate
     command.setData(std::abs(rate), 3);
+	command.logCommand();
     sendAUXCommand(command);
     readAUXResponse(command);
+	command.logCommand();
     return true;
 }
 

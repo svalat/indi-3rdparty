@@ -4,6 +4,7 @@
     Copyright (C) 2020 Paweł T. Jochym
     Copyright (C) 2020 Fabrizio Pollastri
     Copyright (C) 2020-2022 Jasem Mutlaq
+    Copyright (C) 2026 Sébastien Valat
 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Lesser General Public
@@ -276,7 +277,7 @@ class CelestronAUX :
         /////////////////////////////////////////////////////////////////////////////////////
         /// Guiding
         /////////////////////////////////////////////////////////////////////////////////////
-        bool guidePulse(INDI_EQ_AXIS axis, uint32_t ms, int8_t rate);
+        bool guidePulse(INDI_EQ_AXIS axis, uint32_t ms, int8_t rate, double trackSteps);
         bool getGuideRate(AUXTargets target);
         bool setGuideRate(AUXTargets target, uint8_t rate);
 
@@ -290,6 +291,9 @@ class CelestronAUX :
         // For each pulse, we modify the offset so that we can add it to our current tracking traget
         double m_GuideOffset[2] = {0, 0};
         double m_TrackRates[2] = {TRACKRATE_SIDEREAL, 0};
+        bool m_GuideWithPulse = true;
+        bool m_isInPulse = false;
+        int32_t m_LastGuideTrackRate[2] = {0, 0};
 
         TelescopePierSide m_TargetPierSide {PIER_UNKNOWN};
 
@@ -415,6 +419,10 @@ class CelestronAUX :
 
         // Guide Rate
         INDI::PropertyNumber GuideRateNP {2};
+
+        // Guide Rate
+        INDI::PropertySwitch GuidePulseMode {2};
+        enum { PULSE_MODE_PULSE, PULSE_MODE_GUIDE_RATE };
 
         // Encoders
         INDI::PropertyNumber EncoderNP {2};

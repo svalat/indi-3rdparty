@@ -88,10 +88,13 @@ void AUXCommand::logResponse()
     else
         snprintf(part3, BUFFER_SIZE, "%02x", m_Destination);
 
-    if (m_Data.size() > 0)
+    if (m_Data.size() > 0) {
         DEBUGFDEVICE(DEVICE_NAME, DEBUG_LEVEL, "RES %s%s%s [%s]", part1, part2, part3, hex_buffer);
-    else
+		fprintf(stderr, "RES %s%s%s [%s]\n", part1, part2, part3, hex_buffer);
+	} else {
         DEBUGFDEVICE(DEVICE_NAME, DEBUG_LEVEL, "RES %s%s%s", part1, part2, part3);
+		fprintf(stderr, "RES %s%s%s\n", part1, part2, part3);
+	}
 }
 
 /////////////////////////////////////////////////////////////////////////////////////
@@ -125,10 +128,13 @@ void AUXCommand::logCommand()
     else
         snprintf(part3, BUFFER_SIZE, "%02x", m_Destination);
 
-    if (m_Data.size() > 0)
+    if (m_Data.size() > 0) {
         DEBUGFDEVICE(DEVICE_NAME, DEBUG_LEVEL, "CMD %s%s%s [%s]", part1, part2, part3, hex_buffer);
-    else
+		fprintf(stderr, "CMD %s%s%s [%s]\n", part1, part2, part3, hex_buffer);
+	}else {
         DEBUGFDEVICE(DEVICE_NAME, DEBUG_LEVEL, "CMD %s%s%s", part1, part2, part3);
+		fprintf(stderr, "CMD %s%s%s [%s]\n", part1, part2, part3, hex_buffer);
+	}
 }
 
 /////////////////////////////////////////////////////////////////////////////////////
